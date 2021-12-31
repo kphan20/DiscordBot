@@ -99,7 +99,7 @@ async def randnum_error(ctx, error):
     await ctx.send('Requires two valid number arguments!')
     
 @client.command(name='help')
-async def reference(ctx):
+async def help(ctx):
     response = 'List of commands:\n'
     for BotCommand in BotCommands:
         response += BotCommand + ': ' + BotCommands[BotCommand] + '\n'
