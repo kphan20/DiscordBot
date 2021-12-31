@@ -1,19 +1,21 @@
-import os
+import discord
 from discord.ext import commands
-from discord.ext.commands.errors import MissingRequiredArgument, UserInputError, BadArgument
 from dotenv import load_dotenv
 import requests
 import os
 import random
 from bs4 import BeautifulSoup
+import youtube_dl
+import queue
+import asyncio
 # from selenium import webdriver
 # from webdriver_manager.chrome import ChromeDriverManager
 # from selenium.webdriver import Chrome
 # from selenium.webdriver.chrome.options import Options
 
-# load_dotenv()
+load_dotenv()
 #Unique bot token
-TOKEN = os.environ.get('TOKEN')
+TOKEN = os.environ.get('TOKEN') or os.getenv('TOKEN')
 
 #Instantiating the bot
 client = commands.Bot(command_prefix='.')
@@ -97,7 +99,67 @@ async def randnum(ctx, arg1 = None, arg2 = None):
 @randnum.error
 async def randnum_error(ctx, error):
     await ctx.send('Requires two valid number arguments!')
+
+async def connect_to_user(ctx):
+    if ctx.author.voice is None:
+        await ctx.send("User must join a voice channel first!")
+        return
+    elif ctx.voice_client is None:
+        await ctx.author.voice.channel.connect()
+    else:
+        await ctx.voice_client.move_to(ctx.author.voice.channel)
+
+q = asyncio.Queue()
+ydl_opts = {
+    'format': 'bestaudio/best',
+    'restrictfilenames': True,
+    'noplaylist': True,
+    'nocheckcertificate': True,
+    'ignoreerrors': False,
+    'logtostderr': False,
+    'quiet': True,
+    'no_warnings': True,
+    'default_search': 'auto',
+    'source_address': '0.0.0.0' # bind to ipv4 since ipv6 addresses cause issues sometimes
+    }
+
+@client.command(name='play')
+async def play(ctx, param):
+    await connect_to_user(ctx)
+    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(param, download=False)
+        URL = info['formats'][0]['url']
+    ctx.voice_client.play(discord.FFmpegPCMAudio(URL, executable=os.path.abspath(os.getcwd()) + '\\ffmpeg\\ffmpeg\\bin\\ffmpeg.exe'))
     
+@client.command()
+async def test(ctx):
+    
+    print(ctx.voice_client.is_playing())
+        
+@play.error
+async def play_error(ctx, error):
+    print(error)
+    await ctx.send('Something went wrong lmao')
+    
+@client.command(name='pause')
+async def pause(ctx):
+    pass
+
+@client.command(name='skip')
+async def skip(ctx):
+    pass
+
+@client.command()
+async def connect(ctx):
+    await connect_to_user(ctx)
+
+@client.command()
+async def dc(ctx):
+    if ctx.voice_client is None:
+        await ctx.send("Bot is not connected to a channel")
+    else:
+        await ctx.voice_client.disconnect()
+
 @client.command(name='c')
 async def list_of_commands(ctx):
     response = 'List of commands:\n'
