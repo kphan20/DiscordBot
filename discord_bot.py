@@ -11,9 +11,9 @@ from bs4 import BeautifulSoup
 # from selenium.webdriver import Chrome
 # from selenium.webdriver.chrome.options import Options
 
-load_dotenv()
+# load_dotenv()
 #Unique bot token
-TOKEN = os.getenv('TOKEN')
+TOKEN = os.environ.get('TOKEN')
 
 #Instantiating the bot
 client = commands.Bot(command_prefix='.')
