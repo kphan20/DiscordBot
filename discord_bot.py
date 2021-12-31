@@ -88,7 +88,7 @@ async def rand(ctx):
 async def randnum(ctx, arg1 = None, arg2 = None):
     min = int(arg1)
     max = int(arg2)
-    if max <= min:
+    if max < min:
         response = 'Invalid range of numbers'
     else:
         response = 'Number between ' + arg1 + '-' + arg2 + ': ' + str(random.randint(min, max))
@@ -101,8 +101,8 @@ async def randnum_error(ctx, error):
 @client.command(name='c')
 async def list_of_commands(ctx):
     response = 'List of commands:\n'
-    for BotCommand in BotCommands:
-        response += BotCommand + ': ' + BotCommands[BotCommand] + '\n'
+    for BotCommand, desc in BotCommands.items():
+        response += BotCommand + ': ' + desc + '\n'
     await ctx.send(response)
 
 
