@@ -85,7 +85,7 @@ async def rand(ctx):
     await ctx.send(response)
 
 @client.command(name='randnum')
-async def randnum(ctx, arg1 = 0, arg2 = 0):
+async def randnum(ctx, arg1 = None, arg2 = None):
     min = int(arg1)
     max = int(arg2)
     if max <= min:
