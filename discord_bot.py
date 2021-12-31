@@ -98,7 +98,7 @@ async def randnum(ctx, arg1 = 0, arg2 = 0):
 async def randnum_error(ctx, error):
     await ctx.send('Requires two valid number arguments!')
     
-@client.command(name='help')
+@client.command(name='c')
 async def list_of_commands(ctx):
     response = 'List of commands:\n'
     for BotCommand in BotCommands:
