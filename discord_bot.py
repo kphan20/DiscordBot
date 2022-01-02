@@ -6,32 +6,27 @@ import os
 import random
 from bs4 import BeautifulSoup
 import youtube_dl
-import queue
 import asyncio
-# from selenium import webdriver
-# from webdriver_manager.chrome import ChromeDriverManager
-# from selenium.webdriver import Chrome
-# from selenium.webdriver.chrome.options import Options
 
 load_dotenv()
 #Unique bot token
 TOKEN = os.environ.get('TOKEN') or os.getenv('TOKEN')
 
 #Instantiating the bot
-client = commands.Bot(command_prefix='.')
-
-#Setting up the headless browser and html waiting
-# chrome_options = Options()
-# chrome_options.add_argument("-headless")
-# chrome_options.page_load_strategy = 'eager'
+client = commands.Bot(command_prefix='.', help_command=None)
 
 #Dictionary of all available commands
-BotCommands = {
-    '.day': 'Prints the word of the day, its part of speech, and its definition(s)',
-    '.flip': 'Flips a coin and returns the result',
-    '.randword': 'Prints a random word and its definition',
-    '.randnum [int1] [int2]': 'Returns a random number between [int1] and [int2]',
-    }
+bot_commands = [
+    '.day: Prints the word of the day, its part of speech, and its definition(s)',
+    '.flip: Flips a coin and returns the result',
+    '.randword: Prints a random word and its definition',
+    '.randnum [int1] [int2]: Returns a random number between [int1] and [int2]',
+    '.connect: Brings bot to current voice channel',
+    '.play [query (optional)]: Plays searched song. Also resumes music if paused',
+    '.pause: Pauses current song',
+    '.shuffle: Shuffles the current song queue',
+    '.skip: Skips the current song'
+]
 
 #Variables required for different commands
 head_tail = ['Heads', 'Tails']
@@ -42,6 +37,7 @@ randword_url = 'https://randomword.com/'
 async def on_ready():
     print(f'{client.user} had connected to Discord!')
     print(client.guilds)
+    #await test({})
 
 @client.event
 async def on_message(message):
@@ -53,11 +49,8 @@ async def on_message(message):
 
 @client.command(name='day')
 async def day(ctx):
-    # driver = webdriver.Chrome(ChromeDriverManager().install(), options = chrome_options)
-    # driver.get(day_url)
     response = requests.get(day_url)
     soup = BeautifulSoup(response.text, "html.parser")
-    # driver.quit()
 
     word = soup.find('h1').string
     part_of_speech = soup.find(class_='main-attr').string
@@ -103,17 +96,18 @@ async def randnum_error(ctx, error):
 async def connect_to_user(ctx):
     if ctx.author.voice is None:
         await ctx.send("User must join a voice channel first!")
-        return
+        return False
     elif ctx.voice_client is None:
         await ctx.author.voice.channel.connect()
     else:
         await ctx.voice_client.move_to(ctx.author.voice.channel)
+    return True
 
-q = asyncio.Queue()
 ydl_opts = {
     'format': 'bestaudio/best',
     'restrictfilenames': True,
-    'noplaylist': True,
+    #'noplaylist': True,
+    'extract_flat': 'in_playlist',
     'nocheckcertificate': True,
     'ignoreerrors': False,
     'logtostderr': False,
@@ -122,20 +116,59 @@ ydl_opts = {
     'default_search': 'auto',
     'source_address': '0.0.0.0' # bind to ipv4 since ipv6 addresses cause issues sometimes
     }
-
+lock = asyncio.Lock()
+q = asyncio.Queue()
+event = asyncio.Event()
+ydl = youtube_dl.YoutubeDL(ydl_opts)
+song_index = 0
+servers = {}
 @client.command(name='play')
-async def play(ctx, param):
-    await connect_to_user(ctx)
-    with youtube_dl.YoutubeDL(ydl_opts) as ydl:
+async def play(ctx, param=None):
+    connected = await connect_to_user(ctx)
+    if not connected:
+        return
+    if param:
         info = ydl.extract_info(param, download=False)
-        URL = info['formats'][0]['url']
-    ctx.voice_client.play(discord.FFmpegPCMAudio(URL, executable=os.path.abspath(os.getcwd()) + '\\ffmpeg\\ffmpeg\\bin\\ffmpeg.exe'))
-    
+        async with lock:
+            if info.get('_type'):
+                for entry in info['entries']:
+                    await q.put(entry['id'])
+            else:
+                await q.put(info['id'])
+    if ctx.voice_client and ctx.voice_client.is_paused():
+        ctx.voice_client.resume()
+    if not ctx.voice_client.is_playing():
+        while not q.empty():
+            event.clear()
+            if ctx.voice_client:
+                print("playing next song")
+                source = ydl.extract_info(f"https://www.youtube.com/watch?v={q.get_nowait()}", download=False)
+                source = discord.FFmpegPCMAudio(source['formats'][0]['url'], executable=os.path.abspath(os.getcwd()) + '\\ffmpeg\\ffmpeg\\bin\\ffmpeg.exe')
+                source = discord.PCMVolumeTransformer(source)
+                source.volume = 0.5
+                ctx.voice_client.play(source, after = lambda _: ctx.bot.loop.call_soon_threadsafe(event.set))
+                await event.wait()
+                source.cleanup()
+            else:
+                q._init(0)
+
 @client.command()
-async def test(ctx):
-    
-    print(ctx.voice_client.is_playing())
-        
+async def test(ctx, param='https://www.youtube.com/watch?v=aRsWk4JZa5k&list=PLYPQMTVEJGdRc8VEUp85DrWEpoTVzSHME'):
+    urls = []
+    with youtube_dl.YoutubeDL({'format':'bestaudio', 'extract_flat': 'in_playlist'}) as ydl:
+        info = ydl.extract_info(param, download=False)
+        print(info.keys())
+        print(info.get('formats'))
+        print(info.get('id'))
+    #print(ctx.voice_client.is_playing())
+    print(ctx.cog)
+
+@client.command()
+async def shuffle(ctx):
+    async with lock:
+        random.shuffle(q._queue)
+    await ctx.send("Shuffled queue!")
+
 @play.error
 async def play_error(ctx, error):
     print(error)
@@ -143,11 +176,19 @@ async def play_error(ctx, error):
     
 @client.command(name='pause')
 async def pause(ctx):
-    pass
+    if ctx.voice_client and ctx.voice_client.is_playing():
+        ctx.voice_client.pause()
+        await ctx.send("Music is paused!")
+    else:
+        await ctx.send("No music is playing right now!")
 
 @client.command(name='skip')
 async def skip(ctx):
-    pass
+    if ctx.voice_client and ctx.voice_client.is_playing():
+        ctx.voice_client.stop()
+        await ctx.send("Song skipped!")
+    else:
+        await ctx.send("Invalid command!")
 
 @client.command()
 async def connect(ctx):
@@ -160,12 +201,12 @@ async def dc(ctx):
     else:
         await ctx.voice_client.disconnect()
 
-@client.command(name='c')
+@client.command(name='help')
 async def list_of_commands(ctx):
     response = 'List of commands:\n'
-    for BotCommand, desc in BotCommands.items():
-        response += BotCommand + ': ' + desc + '\n'
-    await ctx.send(response)
+    for bot_command in bot_commands:
+        response += f"{bot_command}\n"
+    await ctx.send(response, embed=True)
 
 
 client.run(TOKEN)
