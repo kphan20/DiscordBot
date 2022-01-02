@@ -143,6 +143,7 @@ async def play(ctx, param=None):
             if ctx.voice_client:
                 print("playing next song")
                 source = ydl.extract_info(f"https://www.youtube.com/watch?v={q.get_nowait()}", download=False)
+                await ctx.send(f"Now playing: {source['title']}")
                 source = discord.FFmpegPCMAudio(source['formats'][0]['url'], executable=os.path.abspath(os.getcwd()) + '\\ffmpeg\\ffmpeg\\bin\\ffmpeg.exe')
                 source = discord.PCMVolumeTransformer(source)
                 source.volume = 0.5
@@ -206,7 +207,7 @@ async def list_of_commands(ctx):
     response = 'List of commands:\n'
     for bot_command in bot_commands:
         response += f"{bot_command}\n"
-    await ctx.send(response, embed=True)
+    await ctx.send(response)
 
 
 client.run(TOKEN)
