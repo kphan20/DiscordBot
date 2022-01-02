@@ -72,7 +72,6 @@ async def flip(ctx):
 async def rand(ctx):
     page_source = requests.get(randword_url).text
     soup = BeautifulSoup(page_source, 'html.parser')
-        # driver.quit()
 
     word = soup.find(id="random_word").string
     definition = soup.find(id="random_word_definition").string
@@ -102,6 +101,11 @@ async def connect_to_user(ctx):
     else:
         await ctx.voice_client.move_to(ctx.author.voice.channel)
     return True
+
+ffmpeg_options = {
+    'options': '-vn',
+    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+}
 
 ydl_opts = {
     'format': 'bestaudio/best',
@@ -144,7 +148,7 @@ async def play(ctx, param=None):
                 print("playing next song")
                 source = ydl.extract_info(f"https://www.youtube.com/watch?v={q.get_nowait()}", download=False)
                 await ctx.send(f"Now playing: {source['title']}")
-                source = discord.FFmpegPCMAudio(source['formats'][0]['url'])
+                source = discord.FFmpegPCMAudio(source['formats'][0]['url'], **ffmpeg_options)
                 source = discord.PCMVolumeTransformer(source)
                 source.volume = 0.5
                 ctx.voice_client.play(source, after = lambda _: ctx.bot.loop.call_soon_threadsafe(event.set))
@@ -191,6 +195,11 @@ async def skip(ctx):
     else:
         await ctx.send("Invalid command!")
 
+@client.command()
+async def loop(ctx):
+    if ctx.voice_client and ctx.voice_client.is_playing():
+        pass
+    
 @client.command()
 async def connect(ctx):
     await connect_to_user(ctx)
