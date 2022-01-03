@@ -160,7 +160,8 @@ class Music(commands.Cog):
         # retrieves youtube links if params are given
         if params:
             try:
-                info = self.ydl.extract_info(f"ytsearch:{' '.join(params)}", download=False)
+                query = ' '.join(params)
+                info = self.ydl.extract_info(f"{'' if 'list=' in query else'ytsearch:'}{query}", download=False)
             except:
                 ctx.send('Error in finding song')
                 return
