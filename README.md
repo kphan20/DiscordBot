@@ -2,9 +2,7 @@
 
 ## Description
 
-With the outage of a certain large music bot and the paywalls of other music bots, I
-
-decided to implement one for many reasons:
+With the outage of a certain large music bot and the paywalls of other music bots, I decided to implement one for many reasons:
 
 - Scale up an old project I used to learn the ropes of Python development
 - Gain familiarity with the discord.py API for future reference
@@ -14,15 +12,7 @@ decided to implement one for many reasons:
 - Practice Git/Github workflows more
 - Develop something my friends and I can use regularly
 
-I used youtube_dl to retrieve the audio streams, ffmpeg to play the audio streams, and
-
-the discord.py bot methods to handle command recognition and interacting with the Discord
-
-client. As mentioned before, Heroku was used for hosting the bot. There were many hangups
-
-as I tackled with asynchronous programming more deeply than I have before and figuring
-
-out the Heroku deployment process, but the current rendition of the bot successfully:
+I used youtube_dl to retrieve the audio streams, ffmpeg to play the audio streams, and the discord.py bot methods to handle command recognition and interacting with the Discord client. As mentioned before, Heroku was used for hosting the bot. There were many hangups as I tackled with asynchronous programming more deeply than I have before and figuring out the Heroku deployment process, but the current rendition of the bot successfully:
 
 - Searches for songs
 - Adds them to a queue
@@ -64,11 +54,7 @@ pip install -r requirements.txt
 
 You will need to create a bot and get its token. Instructions can be found [here.](https://discordpy.readthedocs.io/en/stable/discord.html)
 
-Store the token as an environment variable. To run the bot locally, you will need to
-
-download ffmpeg and you may need to link its filepath whenever an FFmpegPCMAudio instance
-
-is created:
+Store the token as an environment variable. To run the bot locally, you will need to download ffmpeg and you may need to link its filepath whenever an FFmpegPCMAudio instance is created:
 
 ```
 source = discord.FFmpegPCMAudio(audio_source, executable='FILEPATH_HERE')
@@ -80,11 +66,7 @@ To start the bot, use this:
 python discord_bot.py
 ```
 
-To host on Heroku, make sure the Procfile and runtime.txt are set up correctly. Add the
-
-bot token as a config variable through either the dashboard or the command line. I also
-
-used these buildpacks:
+To host on Heroku, make sure the Procfile and runtime.txt are set up correctly. Add the bot token as a config variable through either the dashboard or the command line. I also used these buildpacks:
 
 - [heroku-opus](https://elements.heroku.com/buildpacks/xrisk/heroku-opus)
 - [heroku-buildpack-ffmpeg-latest](https://elements.heroku.com/buildpacks/jonathanong/heroku-buildpack-ffmpeg-latest)
