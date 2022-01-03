@@ -10,6 +10,7 @@ import youtube_dl
 load_dotenv()
 #Unique bot token
 TOKEN = os.environ.get('TOKEN') or os.getenv('TOKEN')
+SECRET_MESSAGE = os.environ.get('SECRET_MESSAGE', 'hello')
 
 #Instantiating the bot
 client = commands.Bot(command_prefix='.', help_command=None)
@@ -48,8 +49,13 @@ async def on_message(message):
     """
     if message.author == client.user:
         return
+    if random.randint(0, 49) == 0:
+        emotes = message.guild.emojis
+        react_emote = emotes[random.randint(0, len(emotes) - 1)]
+        sent = await message.channel.send(SECRET_MESSAGE.replace('_', ' '))
+        await sent.add_reaction(react_emote)
     if 'bruh' in message.content.lower():
-        await message.channel.send("bruh")
+        await message.channel.send('bruh')
     await client.process_commands(message)
 
 @client.command(name='day')
