@@ -198,7 +198,7 @@ class Music(commands.Cog):
                             await q.put((song))
                     source = self.ydl.extract_info(f"https://www.youtube.com/watch?v={song}", download=False)
                     await ctx.send(f"Now playing: {source['title']}")
-                    source = discord.FFmpegPCMAudio(source['formats'][0]['url'], **ffmpeg_options, executable='C:\\Users\\knpmt\\IdeaProjects\\DiscordBot\\ffmpeg\\ffmpeg\\bin\\ffmpeg.exe')
+                    source = discord.FFmpegPCMAudio(source['formats'][0]['url'], **ffmpeg_options)
                     source = discord.PCMVolumeTransformer(source)
                     source.volume = 0.5
                     ctx.voice_client.play(source, after = lambda _: ctx.bot.loop.call_soon_threadsafe(event.set))
