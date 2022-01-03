@@ -19,13 +19,13 @@ I used youtube_dl to retrieve the audio streams, ffmpeg to play the audio stream
 - Play songs continuously
 - Shuffle the queue
 - Skip songs
+- Loop the current song
 - Can handle multiple servers and support different music queues for each
 - Various unrelated commands for fun
 
 As for further improvements, these come to mind:
 
 - Implement more established testing modules
-- Implement the loop command
 - Allow for more advanced querying (eg from Spotify, Soundcloud, etc.)
 - Implementing interactive games (more cogs)
 

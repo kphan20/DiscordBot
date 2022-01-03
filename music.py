@@ -23,6 +23,34 @@ ydl_opts = {
     'source_address': '0.0.0.0' # bind to ipv4 since ipv6 addresses cause issues sometimes
     }
 
+class SongQueue(asyncio.Queue):
+    """
+    Subclass of asyncio.Queue that allows for putting items in front of underlying deque
+
+    ...
+
+    Attributes
+    ----------
+    _put(item)
+        Overridden from asyncio.Queue; appends left if item is a tuple and appends to back otherwise
+        
+    """
+    def __init__(self):
+        super().__init__()
+        
+    def _put(self, item):
+        """
+        Overridden from asyncio.Queue; appends left if item is a tuple and appends to back otherwise
+        https://github.com/python/cpython/blob/3.10/Lib/asyncio/queues.py
+        
+        Args:
+            item (tuple or str): item to be appended to queue
+        """
+        if isinstance(item, tuple):
+            self._queue.appendleft(item[0])
+        else:
+            self._queue.append(item)
+            
 class Music(commands.Cog):
     """
     Represents the music command handler and allows for different music to be played between servers
@@ -78,18 +106,19 @@ class Music(commands.Cog):
             ctx (discord.ext.commands.Context): context related to command call
 
         Returns:
-            tuple: Returns the song queue, event, and lock primitives
+            dict: Returns the objects managing server music
         """
         # uses server id as key
         if not self.servers.get(ctx.guild.id):
             self.servers[ctx.guild.id] = {
-                'q': asyncio.Queue(),
+                'q': SongQueue(),
                 'event': asyncio.Event(),
                 'lock': asyncio.Lock(),
-                'song_index': 0
+                'current_song': '',
+                'loop': False
             }
         info = self.servers.get(ctx.guild.id)
-        return (info['q'], info['event'], info['lock'])
+        return info
     
     async def connect_to_user(self, ctx):
         """
@@ -125,7 +154,8 @@ class Music(commands.Cog):
             return
         
         # gets server's async components
-        q, event, lock = self.get_server_info(ctx)
+        server_info = self.get_server_info(ctx)
+        q, event, lock = server_info['q'], server_info['event'], server_info['lock']
         
         # retrieves youtube links if params are given
         if params:
@@ -154,13 +184,20 @@ class Music(commands.Cog):
                 # uses event to communicate when current song is done playing
                 event.clear()
                 
-                # if the bot is current connected, play a song
+                # if the bot is currently connected, play a song
                 # otherwise, clear the queue
                 if ctx.voice_client:
                     print("playing next song")
-                    source = self.ydl.extract_info(f"https://www.youtube.com/watch?v={q.get_nowait()}", download=False)
+                    server_info = self.get_server_info(ctx)
+                    song = q.get_nowait()
+                    server_info['current_song'] = song
+                    # if loop setting is on, then add song back to queue
+                    if server_info['loop']:
+                        async with lock:
+                            await q.put((song))
+                    source = self.ydl.extract_info(f"https://www.youtube.com/watch?v={song}", download=False)
                     await ctx.send(f"Now playing: {source['title']}")
-                    source = discord.FFmpegPCMAudio(source['formats'][0]['url'], **ffmpeg_options)
+                    source = discord.FFmpegPCMAudio(source['formats'][0]['url'], **ffmpeg_options, executable='C:\\Users\\knpmt\\IdeaProjects\\DiscordBot\\ffmpeg\\ffmpeg\\bin\\ffmpeg.exe')
                     source = discord.PCMVolumeTransformer(source)
                     source.volume = 0.5
                     ctx.voice_client.play(source, after = lambda _: ctx.bot.loop.call_soon_threadsafe(event.set))
@@ -177,7 +214,8 @@ class Music(commands.Cog):
         Args:
             ctx (discord.ext.commands.Context): context related to command call
         """
-        q, event, lock = self.get_server_info(ctx.guild.id)
+        info = self.get_server_info(ctx)
+        q, lock = info['q'], info['lock']
         
         # waits for other queue transaction to be done before shuffling
         async with lock:
@@ -224,7 +262,6 @@ class Music(commands.Cog):
         else:
             await ctx.send("Invalid command!")
 
-    # NOT IMPLEMENTED YET
     @commands.command()
     async def loop(self, ctx):
         """
@@ -234,7 +271,16 @@ class Music(commands.Cog):
             ctx (discord.ext.commands.Context): context related to command call
         """
         if ctx.voice_client and ctx.voice_client.is_playing():
-            pass
+            info = self.get_server_info(ctx)
+            loop_setting = not info['loop']
+            info['loop'] = loop_setting
+            await ctx.send(f"Loop {'en' if info['loop'] else 'dis'}abled")
+            # adds current song back to queue to start loop
+            if loop_setting:
+                async with info['lock']:
+                    await info['q'].put((info['current_song']))
+        else:
+            await ctx.send("Nothing is playing")
         
     @commands.command()
     async def connect(self, ctx):
