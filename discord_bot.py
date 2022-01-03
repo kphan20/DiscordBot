@@ -40,6 +40,12 @@ async def on_ready():
 
 @client.event
 async def on_message(message):
+    """
+    Bot will send a message whenever a certain keyword is found
+
+    Args:
+        message (discord.message): Messages sent in discord servers with bot
+    """
     if message.author == client.user:
         return
     if 'bruh' in message.content.lower():
@@ -48,6 +54,12 @@ async def on_message(message):
 
 @client.command(name='day')
 async def day(ctx):
+    """
+    Sends the word of the day, retrieved from the Merriam-Webster website
+
+    Args:
+        ctx (discord.ext.commands.Context): context related to command call
+    """
     response = requests.get(day_url)
     soup = BeautifulSoup(response.text, "html.parser")
 
@@ -65,10 +77,22 @@ async def day(ctx):
 
 @client.command(name='flip')
 async def flip(ctx):
+    """
+    Flips a two sided coin and sends the result
+
+    Args:
+        ctx (discord.ext.commands.Context): context related to command call
+    """
     await ctx.send('Result: ' + head_tail[random.randint(0,1)] + '!')
 
 @client.command(name='randword')
 async def rand(ctx):
+    """
+    Retrieves a random word from a website
+
+    Args:
+        ctx (discord.ext.commands.Context): context related to command call
+    """
     page_source = requests.get(randword_url).text
     soup = BeautifulSoup(page_source, 'html.parser')
 
@@ -79,6 +103,14 @@ async def rand(ctx):
 
 @client.command(name='randnum')
 async def randnum(ctx, arg1 = None, arg2 = None):
+    """
+    Gives a random number between the two given arguments
+
+    Args:
+        ctx (discord.ext.commands.Context): context related to command call
+        arg1 (str, optional): First command parameter. Defaults to None.
+        arg2 (str, optional): Second command parameter. Defaults to None.
+    """
     min = int(arg1)
     max = int(arg2)
     if max < min:
@@ -89,20 +121,24 @@ async def randnum(ctx, arg1 = None, arg2 = None):
     
 @randnum.error
 async def randnum_error(ctx, error):
-    await ctx.send('Requires two valid number arguments!')
+    """
+    Handles errors for randnum function
 
-async def connect_to_user(ctx):
-    if ctx.author.voice is None:
-        await ctx.send("User must join a voice channel first!")
-        return False
-    elif ctx.voice_client is None:
-        await ctx.author.voice.channel.connect()
-    else:
-        await ctx.voice_client.move_to(ctx.author.voice.channel)
-    return True
+    Args:
+        ctx (discord.ext.commands.Context): context related to command call
+        error : Error that arose
+    """
+    await ctx.send('Requires two valid number arguments!')
 
 @client.command()
 async def test(ctx, param='https://www.youtube.com/watch?v=aRsWk4JZa5k&list=PLYPQMTVEJGdRc8VEUp85DrWEpoTVzSHME'):
+    """
+    Testing command
+
+    Args:
+        ctx (discord.ext.commands.Context): context related to command call
+        param (str, optional): A url to be downloaded. Defaults to a testing playlist on youtube.
+    """
     urls = []
     with youtube_dl.YoutubeDL({'format':'bestaudio', 'extract_flat': 'in_playlist'}) as ydl:
         info = ydl.extract_info(param, download=False)
@@ -115,6 +151,12 @@ async def test(ctx, param='https://www.youtube.com/watch?v=aRsWk4JZa5k&list=PLYP
 
 @client.command(name='help')
 async def list_of_commands(ctx):
+    """
+    Custom help command
+
+    Args:
+        ctx (discord.ext.commands.Context): context related to command call
+    """
     response = 'List of commands:\n'
     for bot_command in bot_commands:
         response += f"{bot_command}\n"
