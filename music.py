@@ -59,7 +59,11 @@ class Music(commands.Cog):
         q, event, lock = self.get_server_info(ctx)
         
         if param:
-            info = self.ydl.extract_info(f"ytsearch:{' '.join(param)}", download=False)
+            try:
+                info = self.ydl.extract_info(f"ytsearch:{' '.join(param)}", download=False)
+            except:
+                ctx.send('Error in finding song')
+                return
             async with lock:
                 if info.get('_type'):
                     for entry in info['entries']:
