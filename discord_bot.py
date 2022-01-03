@@ -1,4 +1,4 @@
-import discord
+import music
 from discord.ext import commands
 from dotenv import load_dotenv
 import requests
@@ -6,7 +6,6 @@ import os
 import random
 from bs4 import BeautifulSoup
 import youtube_dl
-import asyncio
 
 load_dotenv()
 #Unique bot token
@@ -102,61 +101,6 @@ async def connect_to_user(ctx):
         await ctx.voice_client.move_to(ctx.author.voice.channel)
     return True
 
-ffmpeg_options = {
-    'options': '-vn',
-    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
-}
-
-ydl_opts = {
-    'format': 'bestaudio/best',
-    'restrictfilenames': True,
-    #'noplaylist': True,
-    'extract_flat': 'in_playlist',
-    'nocheckcertificate': True,
-    'ignoreerrors': False,
-    'logtostderr': False,
-    'quiet': True,
-    'no_warnings': True,
-    'default_search': 'auto',
-    'source_address': '0.0.0.0' # bind to ipv4 since ipv6 addresses cause issues sometimes
-    }
-lock = asyncio.Lock()
-q = asyncio.Queue()
-event = asyncio.Event()
-ydl = youtube_dl.YoutubeDL(ydl_opts)
-song_index = 0
-servers = {}
-@client.command(name='play')
-async def play(ctx, param=None):
-    connected = await connect_to_user(ctx)
-    if not connected:
-        return
-    if param:
-        info = ydl.extract_info(param, download=False)
-        async with lock:
-            if info.get('_type'):
-                for entry in info['entries']:
-                    await q.put(entry['id'])
-            else:
-                await q.put(info['id'])
-    if ctx.voice_client and ctx.voice_client.is_paused():
-        ctx.voice_client.resume()
-    if not ctx.voice_client.is_playing():
-        while not q.empty():
-            event.clear()
-            if ctx.voice_client:
-                print("playing next song")
-                source = ydl.extract_info(f"https://www.youtube.com/watch?v={q.get_nowait()}", download=False)
-                await ctx.send(f"Now playing: {source['title']}")
-                source = discord.FFmpegPCMAudio(source['formats'][0]['url'], **ffmpeg_options)
-                source = discord.PCMVolumeTransformer(source)
-                source.volume = 0.5
-                ctx.voice_client.play(source, after = lambda _: ctx.bot.loop.call_soon_threadsafe(event.set))
-                await event.wait()
-                source.cleanup()
-            else:
-                q._init(0)
-
 @client.command()
 async def test(ctx, param='https://www.youtube.com/watch?v=aRsWk4JZa5k&list=PLYPQMTVEJGdRc8VEUp85DrWEpoTVzSHME'):
     urls = []
@@ -168,48 +112,6 @@ async def test(ctx, param='https://www.youtube.com/watch?v=aRsWk4JZa5k&list=PLYP
     #print(ctx.voice_client.is_playing())
     print(ctx.cog)
 
-@client.command()
-async def shuffle(ctx):
-    async with lock:
-        random.shuffle(q._queue)
-    await ctx.send("Shuffled queue!")
-
-@play.error
-async def play_error(ctx, error):
-    print(error)
-    await ctx.send('Something went wrong lmao')
-    
-@client.command(name='pause')
-async def pause(ctx):
-    if ctx.voice_client and ctx.voice_client.is_playing():
-        ctx.voice_client.pause()
-        await ctx.send("Music is paused!")
-    else:
-        await ctx.send("No music is playing right now!")
-
-@client.command(name='skip')
-async def skip(ctx):
-    if ctx.voice_client and ctx.voice_client.is_playing():
-        ctx.voice_client.stop()
-        await ctx.send("Song skipped!")
-    else:
-        await ctx.send("Invalid command!")
-
-@client.command()
-async def loop(ctx):
-    if ctx.voice_client and ctx.voice_client.is_playing():
-        pass
-    
-@client.command()
-async def connect(ctx):
-    await connect_to_user(ctx)
-
-@client.command()
-async def dc(ctx):
-    if ctx.voice_client is None:
-        await ctx.send("Bot is not connected to a channel")
-    else:
-        await ctx.voice_client.disconnect()
 
 @client.command(name='help')
 async def list_of_commands(ctx):
@@ -218,5 +120,5 @@ async def list_of_commands(ctx):
         response += f"{bot_command}\n"
     await ctx.send(response)
 
-
+client.add_cog(music.Music(client))
 client.run(TOKEN)
