@@ -51,7 +51,7 @@ class Music(commands.Cog):
         return True
     
     @commands.command(name='play')
-    async def play(self, ctx, param=None):
+    async def play(self, ctx, *param):
         connected = await self.connect_to_user(ctx)
         if not connected:
             return
@@ -59,7 +59,7 @@ class Music(commands.Cog):
         q, event, lock = self.get_server_info(ctx)
         
         if param:
-            info = self.ydl.extract_info(f"ytsearch:{param}", download=False)
+            info = self.ydl.extract_info(f"ytsearch:{' '.join(param)}", download=False)
             async with lock:
                 if info.get('_type'):
                     for entry in info['entries']:
