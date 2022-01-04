@@ -302,6 +302,8 @@ class Music(commands.Cog):
         # used to decide which songs are displayed on the current page of the embed message
         page_size = 10
         num_pages = math.ceil(info['q'].qsize() / page_size)
+        if num_pages < 1:
+            return
         current_page = 1
         
         # enumerates songs in queue
@@ -309,19 +311,20 @@ class Music(commands.Cog):
             songs = list(enumerate(info['q']._queue, start = 1))
             
         embed_settings = discord.Embed(title='Current song queue:', color=discord.Color.blue())
-        def update_embed_settings():
+        def update_embed_settings(page_num):
             """
             Changes the embed fields based on the current page
             """
             embed_settings.clear_fields()
-            for x in range((current_page - 1) * page_size, current_page * page_size):
+            for x in range((page_num - 1) * page_size, min(len(songs), page_num * page_size)):
                 index = songs[x][0]
                 song = songs[x][1]
                 duration = int(math.floor(song['duration']))
-                time_str = f"{'' if duration > 3600 else f'{duration // 3600}:'}{duration//60}:{duration % 60}"
+                minutes = duration % 3600 // 60
+                time_str = f"{'' if duration < 3600 else f'{duration // 3600}:'}{minutes}:{duration % 60}"
                 embed_settings.add_field(name=f"{index}. {song['title']}", 
                                         value=time_str, inline=False)
-        update_embed_settings()
+        update_embed_settings(current_page)
         
         # sends initial message with left and right emotes to change pages
         message = await ctx.send(embed=embed_settings)
@@ -347,12 +350,12 @@ class Music(commands.Cog):
                 reaction, user = await self.bot.wait_for("reaction_add", timeout=30, check=check)
                 if str(reaction.emoji) == "\u25c0" and current_page > 1:
                     current_page -= 1
-                    update_embed_settings()
-                    message.edit(embed=embed_settings)
+                    update_embed_settings(current_page)
+                    await message.edit(embed=embed_settings)
                 elif str(reaction.emoji) == "\u25b6" and current_page < num_pages:
                     current_page += 1
-                    update_embed_settings()
-                    message.edit(embed=embed_settings)
+                    update_embed_settings(current_page)
+                    await message.edit(embed=embed_settings)
                 else:
                     await message.remove_reaction(reaction, user)
             except asyncio.TimeoutError:
