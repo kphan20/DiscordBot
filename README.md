@@ -71,3 +71,5 @@ To host on Heroku, make sure the Procfile and runtime.txt are set up correctly. 
 - [heroku-opus](https://elements.heroku.com/buildpacks/xrisk/heroku-opus)
 - [heroku-buildpack-ffmpeg-latest](https://elements.heroku.com/buildpacks/jonathanong/heroku-buildpack-ffmpeg-latest)
 - [heroku-buildpack-python](https://elements.heroku.com/buildpacks/heroku/heroku-buildpack-python)
+
+There are various ways of deploying, which can be found [here.](https://devcenter.heroku.com/articles/git)
