@@ -173,12 +173,8 @@ class Music(commands.Cog):
                 return
             # lock ensures that only one person is affecting the queue at a time
             async with lock:
-                # adds multiple songs if a playlist was queried, adds a single song otherwise
-                if info.get('_type'):
-                    for entry in info['entries']:
-                        await q.put(entry)
-                else:
-                    await q.put(info)
+                for entry in info['entries']:
+                    await q.put(entry)
 
         # if bot is paused, continue playing
         if ctx.voice_client and ctx.voice_client.is_paused():
@@ -194,22 +190,28 @@ class Music(commands.Cog):
                 # if the bot is currently connected, play a song
                 # otherwise, clear the queue
                 if ctx.voice_client:
-                    print("playing next song")
                     server_info = self.get_server_info(ctx)
-                    song = q.get_nowait()
+                    
+                    # handles loop command logic
+                    song = server_info['current_song'] if server_info['loop'] else q.get_nowait()
                     server_info['current_song'] = song
+                    
+                    # extracts audio stream and creates AudioSource object with adjustable volume
                     source = self.ydl.extract_info(f"https://www.youtube.com/watch?v={song['id']}", download=False)
-                    await ctx.send(f"Now playing: {source['title']}")
-                    source = discord.FFmpegPCMAudio(source['formats'][0]['url'], **ffmpeg_options)
-                    source = discord.PCMVolumeTransformer(source)
-                    source.volume = 0.5
-                    ctx.voice_client.play(source, after = lambda _: ctx.bot.loop.call_soon_threadsafe(event.set))
-                    await event.wait()
-                    # if loop setting is on, then add song back to queue
-                    if server_info['loop']:
+                    audio_source = discord.FFmpegPCMAudio(source['formats'][0]['url'], **ffmpeg_options)
+                    audio_source = discord.PCMVolumeTransformer(audio_source)
+                    audio_source.volume = 0.5
+                    
+                    # handles errors where two songs are played simultaneously
+                    try:
+                        ctx.voice_client.play(audio_source, after = lambda _: ctx.bot.loop.call_soon_threadsafe(event.set))
+                        await ctx.send(f"Now playing: {source['title']}")
+                    except:
                         async with lock:
                             await q.put((song))
-                    source.cleanup()
+                            
+                    await event.wait()
+                    audio_source.cleanup()
                 else:
                     q._init(0)
 
@@ -283,7 +285,7 @@ class Music(commands.Cog):
             info['loop'] = loop_setting
             await ctx.send(f"Loop {'en' if info['loop'] else 'dis'}abled for song {info['current_song']['title']}")
             # adds current song back to queue to start loop
-            if loop_setting:
+            if loop_setting and info['q'].empty():
                 async with info['lock']:
                     await info['q'].put((info['current_song']))
         else:
@@ -321,8 +323,10 @@ class Music(commands.Cog):
                 index = songs[x][0]
                 song = songs[x][1]
                 duration = int(math.floor(song['duration']))
+                hours = '' if duration < 3600 else f'{duration // 3600}:'
                 minutes = duration % 3600 // 60
-                time_str = f"{'' if duration < 3600 else f'{duration // 3600}:'}{minutes:02}:{duration % 60:02}"
+                minutes = minutes if duration < 3600 else f'{minutes:02}'
+                time_str = f"{hours}{minutes}:{duration % 60:02}"
                 embed_settings.add_field(name=f"{index}. {song['title']}", 
                                         value=time_str, inline=False)
         update_embed_settings(current_page)
