@@ -3,6 +3,7 @@ from discord.ext import commands
 import asyncio
 import youtube_dl
 import random
+import math
 
 ffmpeg_options = {
     'options': '-vn',
@@ -83,6 +84,10 @@ class Music(commands.Cog):
         Pauses the current song if one is playing
     skip(ctx)
         Skips the current song
+    loop(ctx)
+        Loop the current song
+    queue(ctx)
+        Sends an embedded message that contains the songs currently loaded on the queue
     connect(ctx)
         Connects to user's voice channel
     dc(ctx)
@@ -162,6 +167,7 @@ class Music(commands.Cog):
             try:
                 query = ' '.join(params)
                 info = self.ydl.extract_info(f"{'' if 'list=' in query else'ytsearch:'}{query}", download=False)
+                await ctx.send(f"Added song to queue!")
             except:
                 ctx.send('Error in finding song')
                 return
@@ -170,9 +176,9 @@ class Music(commands.Cog):
                 # adds multiple songs if a playlist was queried, adds a single song otherwise
                 if info.get('_type'):
                     for entry in info['entries']:
-                        await q.put(entry['id'])
+                        await q.put(entry)
                 else:
-                    await q.put(info['id'])
+                    await q.put(info)
 
         # if bot is paused, continue playing
         if ctx.voice_client and ctx.voice_client.is_paused():
@@ -193,16 +199,16 @@ class Music(commands.Cog):
                     song = q.get_nowait()
                     server_info['current_song'] = song
                     # if loop setting is on, then add song back to queue
-                    if server_info['loop']:
-                        async with lock:
-                            await q.put((song))
-                    source = self.ydl.extract_info(f"https://www.youtube.com/watch?v={song}", download=False)
+                    source = self.ydl.extract_info(f"https://www.youtube.com/watch?v={song['id']}", download=False)
                     await ctx.send(f"Now playing: {source['title']}")
                     source = discord.FFmpegPCMAudio(source['formats'][0]['url'], **ffmpeg_options)
                     source = discord.PCMVolumeTransformer(source)
                     source.volume = 0.5
                     ctx.voice_client.play(source, after = lambda _: ctx.bot.loop.call_soon_threadsafe(event.set))
                     await event.wait()
+                    if server_info['loop']:
+                        async with lock:
+                            await q.put((song))
                     source.cleanup()
                 else:
                     q._init(0)
@@ -275,7 +281,7 @@ class Music(commands.Cog):
             info = self.get_server_info(ctx)
             loop_setting = not info['loop']
             info['loop'] = loop_setting
-            await ctx.send(f"Loop {'en' if info['loop'] else 'dis'}abled")
+            await ctx.send(f"Loop {'en' if info['loop'] else 'dis'}abled for song {info['current_song']['title']}")
             # adds current song back to queue to start loop
             if loop_setting:
                 async with info['lock']:
@@ -283,6 +289,75 @@ class Music(commands.Cog):
         else:
             await ctx.send("Nothing is playing")
         
+    @commands.command(name='queue', aliases=['q'])
+    async def queue(self, ctx):
+        """
+        Sends an embedded message that contains the songs currently loaded on the queue
+
+        Args:
+            ctx (discord.ext.commands.Context): context related to command call
+        """
+        info = self.get_server_info(ctx)
+        
+        # used to decide which songs are displayed on the current page of the embed message
+        page_size = 10
+        num_pages = math.ceil(info['q'].qsize() / page_size)
+        current_page = 1
+        
+        # enumerates songs in queue
+        async with info['lock']:
+            songs = list(enumerate(info['q']._queue), start = 1)
+            
+        embed_settings = discord.Embed(title='Current song queue:', color=discord.Color.blue())
+        def update_embed_settings():
+            """
+            Changes the embed fields based on the current page
+            """
+            embed_settings.clear_fields()
+            for x in range((current_page - 1) * page_size, current_page * page_size):
+                index = songs[x][0]
+                song = songs[x][1]
+                duration = int(math.floor(song['duration']))
+                time_str = f"{'' if duration > 3600 else f'{duration // 3600}:'}{duration//60}:{duration % 60}"
+                embed_settings.add_field(name=f"{index}. {song['title']}", 
+                                        value=time_str, inline=False)
+        update_embed_settings()
+        
+        # sends initial message with left and right emotes to change pages
+        message = await ctx.send(embed=embed_settings)
+        await message.add_reaction("\u25c0")
+        await message.add_reaction("\u25b6")
+        
+        def check(reaction, user):
+            """
+            Detects whether one of the valid reactions was used
+
+            Args:
+                reaction (discord.Reaction): reaction added to the message
+                user (discord.User): user that added the reaction
+                
+            Returns:
+                bool: returns whether reaction was added one of the page flip emotes
+            """
+            return str(reaction.emoji) in ["\u25c0", "\u25b6"]
+        
+        # scans for reactions until timeout
+        while True:
+            try:
+                reaction, user = await self.bot.wait_for("reaction_add", timeout=30, check=check)
+                if str(reaction.emoji) == "\u25c0" and current_page > 1:
+                    current_page -= 1
+                    update_embed_settings()
+                    message.edit(embed=embed_settings)
+                elif str(reaction.emoji) == "\u25b6" and current_page < num_pages:
+                    current_page += 1
+                    update_embed_settings()
+                    message.edit(embed=embed_settings)
+                else:
+                    await message.remove_reaction(reaction, user)
+            except asyncio.TimeoutError:
+                break
+                
     @commands.command()
     async def connect(self, ctx):
         """
@@ -309,4 +384,3 @@ class Music(commands.Cog):
                 del self.servers[ctx.guild.id]
             except KeyError:
                 pass
-            
