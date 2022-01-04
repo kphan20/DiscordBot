@@ -198,7 +198,6 @@ class Music(commands.Cog):
                     server_info = self.get_server_info(ctx)
                     song = q.get_nowait()
                     server_info['current_song'] = song
-                    # if loop setting is on, then add song back to queue
                     source = self.ydl.extract_info(f"https://www.youtube.com/watch?v={song['id']}", download=False)
                     await ctx.send(f"Now playing: {source['title']}")
                     source = discord.FFmpegPCMAudio(source['formats'][0]['url'], **ffmpeg_options)
@@ -206,6 +205,7 @@ class Music(commands.Cog):
                     source.volume = 0.5
                     ctx.voice_client.play(source, after = lambda _: ctx.bot.loop.call_soon_threadsafe(event.set))
                     await event.wait()
+                    # if loop setting is on, then add song back to queue
                     if server_info['loop']:
                         async with lock:
                             await q.put((song))
