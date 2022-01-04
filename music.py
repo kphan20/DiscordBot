@@ -303,6 +303,7 @@ class Music(commands.Cog):
         page_size = 10
         num_pages = math.ceil(info['q'].qsize() / page_size)
         if num_pages < 1:
+            await ctx.send("Queue is empty! Add some songs first.")
             return
         current_page = 1
         
@@ -321,7 +322,7 @@ class Music(commands.Cog):
                 song = songs[x][1]
                 duration = int(math.floor(song['duration']))
                 minutes = duration % 3600 // 60
-                time_str = f"{'' if duration < 3600 else f'{duration // 3600}:'}{minutes}:{duration % 60}"
+                time_str = f"{'' if duration < 3600 else f'{duration // 3600}:'}{minutes:02}:{duration % 60:02}"
                 embed_settings.add_field(name=f"{index}. {song['title']}", 
                                         value=time_str, inline=False)
         update_embed_settings(current_page)
@@ -356,8 +357,7 @@ class Music(commands.Cog):
                     current_page += 1
                     update_embed_settings(current_page)
                     await message.edit(embed=embed_settings)
-                else:
-                    await message.remove_reaction(reaction, user)
+                await message.remove_reaction(reaction, user)
             except asyncio.TimeoutError:
                 break
                 
