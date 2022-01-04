@@ -306,7 +306,7 @@ class Music(commands.Cog):
         
         # enumerates songs in queue
         async with info['lock']:
-            songs = list(enumerate(info['q']._queue), start = 1)
+            songs = list(enumerate(info['q']._queue, start = 1))
             
         embed_settings = discord.Embed(title='Current song queue:', color=discord.Color.blue())
         def update_embed_settings():
