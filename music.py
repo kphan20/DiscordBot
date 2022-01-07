@@ -24,6 +24,15 @@ ydl_opts = {
     'source_address': '0.0.0.0' # bind to ipv4 since ipv6 addresses cause issues sometimes
     }
 
+# controls volume of AudioSource
+VOLUME_CONTROL = 0.5
+
+# determines size of each page for queue command
+QUEUE_PAGE_SIZE = 10
+
+# causes queue message to timeout at this time
+TIMEOUT = 30
+
 class SongQueue(asyncio.Queue):
     """
     Subclass of asyncio.Queue that allows for putting items in front of underlying deque
@@ -166,7 +175,8 @@ class Music(commands.Cog):
         if params:
             try:
                 query = ' '.join(params)
-                info = self.ydl.extract_info(f"{'' if 'list=' in query else'ytsearch:'}{query}", download=False)
+                # assumes only soundcloud and youtube are available
+                info = self.ydl.extract_info(f"{'' if 'list=' in query or 'soundcloud.com' in query else'ytsearch:'}{query}", download=False)
                 await ctx.send(f"Added song to queue!")
             except:
                 ctx.send('Error in finding song')
@@ -197,10 +207,13 @@ class Music(commands.Cog):
                     server_info['current_song'] = song
                     
                     # extracts audio stream and creates AudioSource object with adjustable volume
-                    source = self.ydl.extract_info(f"https://www.youtube.com/watch?v={song['id']}", download=False)
+                    if song.get('ie_key') == 'Soundcloud':
+                        source = self.ydl.extract_info(song['url'], download=False)
+                    else:
+                        source = self.ydl.extract_info(f"https://www.youtube.com/watch?v={song['id']}", download=False)
                     audio_source = discord.FFmpegPCMAudio(source['formats'][0]['url'], **ffmpeg_options)
                     audio_source = discord.PCMVolumeTransformer(audio_source)
-                    audio_source.volume = 0.5
+                    audio_source.volume = VOLUME_CONTROL
                     
                     # handles errors where two songs are played simultaneously
                     try:
@@ -287,10 +300,10 @@ class Music(commands.Cog):
             # adds current song back to queue to start loop
             if loop_setting and info['q'].empty():
                 async with info['lock']:
-                    await info['q'].put((info['current_song']))
+                    await info['q'].put(info['current_song'])
         else:
             await ctx.send("Nothing is playing")
-        
+
     @commands.command(name='queue', aliases=['q'])
     async def queue(self, ctx):
         """
@@ -302,7 +315,7 @@ class Music(commands.Cog):
         info = self.get_server_info(ctx)
         
         # used to decide which songs are displayed on the current page of the embed message
-        page_size = 10
+        page_size = QUEUE_PAGE_SIZE
         num_pages = math.ceil(info['q'].qsize() / page_size)
         if num_pages < 1:
             await ctx.send("Queue is empty! Add some songs first.")
@@ -322,12 +335,20 @@ class Music(commands.Cog):
             for x in range((page_num - 1) * page_size, min(len(songs), page_num * page_size)):
                 index = songs[x][0]
                 song = songs[x][1]
-                duration = int(math.floor(song['duration']))
-                hours = '' if duration < 3600 else f'{duration // 3600}:'
-                minutes = duration % 3600 // 60
-                minutes = minutes if duration < 3600 else f'{minutes:02}'
-                time_str = f"{hours}{minutes}:{duration % 60:02}"
-                embed_settings.add_field(name=f"{index}. {song['title']}", 
+                source_type = song.get('ie_key')
+                # assumes only soundcloud and youtube available
+                if source_type == 'Soundcloud':
+                    time_str = 'Soundcloud song'
+                    title = song['url']
+                    title = title.split('/')[-1].replace('-', ' ')
+                else:
+                    duration = int(math.floor(song['duration']))
+                    hours = '' if duration < 3600 else f'{duration // 3600}:'
+                    minutes = duration % 3600 // 60
+                    minutes = minutes if duration < 3600 else f'{minutes:02}'
+                    time_str = f"{hours}{minutes}:{duration % 60:02}"
+                    title = song['title']
+                embed_settings.add_field(name=f"{index}. {title}", 
                                         value=time_str, inline=False)
         update_embed_settings(current_page)
         
@@ -352,7 +373,7 @@ class Music(commands.Cog):
         # scans for reactions until timeout
         while True:
             try:
-                reaction, user = await self.bot.wait_for("reaction_add", timeout=30, check=check)
+                reaction, user = await self.bot.wait_for("reaction_add", timeout=TIMEOUT, check=check)
                 if str(reaction.emoji) == "\u25c0" and current_page > 1:
                     current_page -= 1
                     update_embed_settings(current_page)
