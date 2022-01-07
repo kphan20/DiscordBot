@@ -33,6 +33,9 @@ head_tail = ['Heads', 'Tails']
 day_url = 'https://www.merriam-webster.com/word-of-the-day'
 randword_url = 'https://randomword.com/'
 
+# determines chance that secret message is sent - higher means lower chance
+SECRET_MESSAGE_PROC = 99
+
 @client.event
 async def on_ready():
     print(f'{client.user} had connected to Discord!')
@@ -49,7 +52,7 @@ async def on_message(message):
     """
     if message.author == client.user:
         return
-    if random.randint(0, 49) == 0:
+    if random.randint(0, SECRET_MESSAGE_PROC) == 0:
         emotes = message.guild.emojis
         react_emote = emotes[random.randint(0, len(emotes) - 1)]
         sent = await message.channel.send(SECRET_MESSAGE.replace('_', ' '))
