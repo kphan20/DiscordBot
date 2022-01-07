@@ -14,7 +14,7 @@ With the outage of a certain large music bot and the paywalls of other music bot
 
 I used youtube_dl to retrieve the audio streams, ffmpeg to play the audio streams, and the discord.py bot methods to handle command recognition and interacting with the Discord client. As mentioned before, Heroku was used for hosting the bot. There were many hangups as I tackled with asynchronous programming more deeply than I have before and figuring out the Heroku deployment process, but the current rendition of the bot successfully:
 
-- Searches for songs
+- Searches for songs (default is youtube search but soundcloud playlists can be used as well)
 - Adds them to a queue
 - Play songs continuously
 - Shuffle the queue
@@ -26,7 +26,7 @@ I used youtube_dl to retrieve the audio streams, ffmpeg to play the audio stream
 As for further improvements, these come to mind:
 
 - Implement more established testing modules
-- Allow for more advanced querying (eg from Spotify, Soundcloud, etc.)
+- Allow for more advanced querying (eg from Spotify, etc.)
 - Implementing interactive games (more cogs)
 
 ## Running the project
