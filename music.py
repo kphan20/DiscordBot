@@ -387,7 +387,7 @@ class Music(commands.Cog):
         
         def check(reaction, user):
             """
-            Detects whether one of the valid reactions was used
+            Detects whether one of the valid reactions was used by a non-bot user
 
             Args:
                 reaction (discord.Reaction): reaction added to the message
@@ -396,8 +396,8 @@ class Music(commands.Cog):
             Returns:
                 bool: returns whether reaction was added one of the page flip emotes
             """
-            return str(reaction.emoji) in ["\u25c0", "\u25b6"]
-        
+            return str(reaction.emoji) in ["\u25c0", "\u25b6"] and not user.bot
+
         # scans for reactions until timeout
         while True:
             try:
