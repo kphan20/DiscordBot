@@ -83,6 +83,10 @@ class Music(commands.Cog):
         Retrieves server async components or creates new ones
     connect_to_user(ctx)
         Handles connecting bot to the user's voice channel
+    add_to_queue(ctx, *params)
+        Adds songs to queue
+    add(ctx, *params)
+        Queues song query without automatically playing
     play(ctx, *params)
         Queues song query and plays from queue if not currently playing
     shuffle(ctx)
@@ -153,14 +157,12 @@ class Music(commands.Cog):
             await ctx.voice_client.move_to(ctx.author.voice.channel)
         return True
     
-    @commands.command(name='play', aliases=['p'])
-    async def play(self, ctx, *params):
+    async def add_to_queue(self, ctx, *params):
         """
-        Queues song query and plays from queue if not currently playing
-        
+        Adds songs to queue
+
         Args:
             ctx (discord.ext.commands.Context): context related to command call
-            params: command parameters that stores the query information
         """
         # exits if the user is not connected to a voice channel
         connected = await self.connect_to_user(ctx)
@@ -169,7 +171,7 @@ class Music(commands.Cog):
         
         # gets server's async components
         server_info = self.get_server_info(ctx)
-        q, event, lock = server_info['q'], server_info['event'], server_info['lock']
+        q, lock = server_info['q'], server_info['lock']
         
         # retrieves youtube links if params are given
         if params:
@@ -185,10 +187,36 @@ class Music(commands.Cog):
             async with lock:
                 for entry in info['entries']:
                     await q.put(entry)
+    
+    @commands.command(name="add", aliases=['a'])
+    async def add(self, ctx, *params):
+        """
+        Queues song query without automatically playing
+        
+        Args:
+            ctx (discord.ext.commands.Context): context related to command call
+            params: command parameters that stores the query information
+        """
+        await self.add_to_queue(ctx, *params)
+        
+    @commands.command(name='play', aliases=['p'])
+    async def play(self, ctx, *params):
+        """
+        Queues song query and plays from queue if not currently playing
+        
+        Args:
+            ctx (discord.ext.commands.Context): context related to command call
+            params: command parameters that stores the query information
+        """
+        await self.add_to_queue(ctx, *params)
 
         # if bot is paused, continue playing
         if ctx.voice_client and ctx.voice_client.is_paused():
             ctx.voice_client.resume()
+            
+        # gets server's async components
+        server_info = self.get_server_info(ctx)
+        q, event, lock = server_info['q'], server_info['event'], server_info['lock']
         
         # starts the song playing loop if no song is currently playing
         if not ctx.voice_client.is_playing():
