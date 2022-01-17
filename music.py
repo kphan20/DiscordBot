@@ -170,6 +170,7 @@ class Music(commands.Cog):
             await ctx.voice_client.move_to(ctx.author.voice.channel)
         return True
     
+    
     async def add_to_queue(self, ctx, *params):
         """
         Adds songs to queue
