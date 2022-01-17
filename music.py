@@ -1,6 +1,7 @@
 import discord
 from discord.ext import commands
 import asyncio
+from discord.utils import get
 import youtube_dl
 import random
 import math
@@ -214,8 +215,8 @@ class Music(commands.Cog):
         except KeyError:
             pass
     
-    @commands.Cog.listener
-    async def on_voice_state_update(self, member, before: discord.VoiceState, after: discord.VoiceState):
+    @commands.Cog.listener()
+    async def on_voice_state_update(self, member, before: discord.VoiceChannel, after):
         """
         Listener that detects when there are no human users left in voice chat
         and disconnects the bot
@@ -225,41 +226,44 @@ class Music(commands.Cog):
         bot is currently in.
         
         Args:
+            member (discord.Member): the user
             before (discord.VoiceState): the previous voice state of the user
             after (discord.VoiceState): the resulting voice state of the user
         """
         
+        # ignores bots
+        if member.bot:
+            return
+        
         # if the user just joined a chat, nothing happens
         if before.channel is None:
+            return
+        
+        # if the bot is not connected to before's guild, exit
+        bot_vc = get(self.bot.voice_clients, guild=before.channel.guild)
+        if bot_vc is None:
+            return
+        
+        # if the user was not in the same channel as bot, exit
+        if before.channel.id != bot_vc.channel.id:
             return
         
         # handles cases such as muting, unmuting, etc.
         if after.channel and before.channel.id == after.channel.id:
             return
         
-        # gets the members of the channel
-        members = before.channel.members
-        
-        # handles if the bot wasn't in the user's before channel
-        if self.bot not in members:
-            return
-        
-        # handles case where the bot is now alone
-        if (len(members) <= 2):
-            await self.disconnect(before.channel.guild)
-            return
-        
         # counts the number of real users in the voice chat
         users = 0
-        for channel_member in before.channel.members:
-            if not channel_member.bot:
+        for channel_member in before.channel.voice_states.keys():
+            user = await self.bot.fetch_user(channel_member)
+            if not user.bot:
                 users += 1
                 # breaks early if there is more than one real user
-                if users > 1:
+                if users >= 1:
                     break
         
         # is there is only one or no real users, disconnect
-        if users <= 1:
+        if users < 1:
             await self.disconnect(before.channel.guild)    
     
     @commands.command(name="add", aliases=['a'])
@@ -330,7 +334,8 @@ class Music(commands.Cog):
                 else:
                     q._init(0)
             else:
-                self.disconnect(ctx.guild)
+                await ctx.send("Queue is empty, so I'm leaving. See you next time!")
+                await self.disconnect(ctx.guild)
 
     @commands.command()
     async def shuffle(self, ctx):
@@ -511,4 +516,4 @@ class Music(commands.Cog):
         if ctx.voice_client is None:
             await ctx.send("Bot is not connected to a channel")
         else:
-            self.disconnect(ctx.guild)
+            await self.disconnect(ctx.guild)
