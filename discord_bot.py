@@ -57,8 +57,8 @@ async def on_message(message):
         react_emote = emotes[random.randint(0, len(emotes) - 1)]
         sent = await message.channel.send(SECRET_MESSAGE.replace('_', ' '))
         await sent.add_reaction(react_emote)
-    if 'bruh' in message.content.lower():
-        await message.channel.send('bruh')
+    # if 'bruh' in message.content.lower():
+    #     await message.channel.send('bruh')
     await client.process_commands(message)
 
 @client.command(name='day')
