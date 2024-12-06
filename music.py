@@ -2,19 +2,19 @@ import discord
 from discord.ext import commands
 import asyncio
 from discord.utils import get
-import youtube_dl
+import yt_dlp
 import random
 import math
 
 ffmpeg_options = {
     'options': '-vn',
-    "before_options": "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
+    "before_options": "-loglevel debug -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5"
 }
 
 ydl_opts = {
     'format': 'bestaudio/best',
     'restrictfilenames': True,
-    #'noplaylist': True,
+    'audioformat': 'mp3',
     'extract_flat': 'in_playlist',
     'nocheckcertificate': True,
     'ignoreerrors': False,
@@ -22,11 +22,11 @@ ydl_opts = {
     'quiet': True,
     'no_warnings': True,
     'default_search': 'auto',
-    'source_address': '0.0.0.0' # bind to ipv4 since ipv6 addresses cause issues sometimes
-    }
+    'source_address': '0.0.0.0' 
+}
 
 # controls volume of AudioSource
-VOLUME_CONTROL = 0.5
+VOLUME_CONTROL = 0.1
 
 # determines size of each page for queue command
 QUEUE_PAGE_SIZE = 10
@@ -126,7 +126,7 @@ class Music(commands.Cog):
             bot (discord.ext.commands.Bot): a representation of the bot
         """
         self.bot = bot
-        self.ydl = youtube_dl.YoutubeDL(ydl_opts)
+        self.ydl = yt_dlp.YoutubeDL(ydl_opts)
         self.servers = {}
     
     def get_server_info(self, ctx):
@@ -166,7 +166,7 @@ class Music(commands.Cog):
             return False
         elif ctx.voice_client is None:
             await ctx.author.voice.channel.connect()
-        else:
+        elif ctx.voice_client != ctx.author.voice.channel:
             await ctx.voice_client.move_to(ctx.author.voice.channel)
         return True
     
@@ -192,7 +192,8 @@ class Music(commands.Cog):
             try:
                 query = ' '.join(params)
                 # assumes only soundcloud and youtube are available
-                info = self.ydl.extract_info(f"{'' if 'list=' in query or 'soundcloud.com' in query else'ytsearch:'}{query}", download=False)
+                # TODO link verification?
+                info = self.ydl.extract_info(f"{'' if ('list=' in query or 'soundcloud.com' in query or 'youtube.com' in query) else 'ytsearch:'}{query}", download=False)
                 await ctx.send(f"Added song to queue!")
             except:
                 ctx.send('Error in finding song')
@@ -211,10 +212,8 @@ class Music(commands.Cog):
             guild (discord.Guild): guild related to function call
         """
         await guild.voice_client.disconnect()
-        try:
+        if guild.id in self.servers:
             del self.servers[guild.id]
-        except KeyError:
-            pass
     
     @commands.Cog.listener()
     async def on_voice_state_update(self, member, before: discord.VoiceChannel, after):
@@ -254,17 +253,15 @@ class Music(commands.Cog):
             return
         
         # counts the number of real users in the voice chat
-        users = 0
+        user_found = False
         for channel_member in before.channel.voice_states.keys():
             user = await self.bot.fetch_user(channel_member)
             if not user.bot:
-                users += 1
-                # breaks early if there is more than one real user
-                if users >= 1:
-                    break
+                user_found = True
+                break
         
         # is there is only one or no real users, disconnect
-        if users < 1:
+        if not user_found:
             await self.disconnect(before.channel.guild)    
     
     @commands.command(name="add", aliases=['a'])
@@ -297,45 +294,50 @@ class Music(commands.Cog):
         server_info = self.get_server_info(ctx)
         q, event, lock = server_info['q'], server_info['event'], server_info['lock']
         
-        # starts the song playing loop if no song is currently playing
-        if not ctx.voice_client.is_playing():
-            # continues until the song queue is empty
-            while not q.empty():
-                # uses event to communicate when current song is done playing
-                event.clear()
+        # exits early if client is already playing
+        if ctx.voice_client.is_playing(): # TODO does resume make it play right away? What about small gaps between songs?
+            return
+
+        # continues until the song queue is empty
+        while not q.empty():
+            # uses event to communicate when current song is done playing
+            event.clear()
+            
+            # if the bot is currently connected, play a song
+            # otherwise, clear the queue
+            if ctx.voice_client:
+                server_info = self.get_server_info(ctx) # TODO do I need this?
                 
-                # if the bot is currently connected, play a song
-                # otherwise, clear the queue
-                if ctx.voice_client:
-                    server_info = self.get_server_info(ctx)
-                    
-                    # handles loop command logic
-                    song = server_info['current_song'] if server_info['loop'] else q.get_nowait()
-                    server_info['current_song'] = song
-                    
-                    # extracts audio stream and creates AudioSource object with adjustable volume
-                    if song.get('ie_key') == 'Soundcloud':
-                        source = self.ydl.extract_info(song['url'], download=False)
-                    else:
-                        source = self.ydl.extract_info(f"https://www.youtube.com/watch?v={song['id']}", download=False)
-                    audio_source = discord.FFmpegPCMAudio(source['formats'][0]['url'], **ffmpeg_options)
-                    audio_source = discord.PCMVolumeTransformer(audio_source)
-                    audio_source.volume = VOLUME_CONTROL
-                    
-                    # handles errors where two songs are played simultaneously
-                    try:
-                        ctx.voice_client.play(audio_source, after = lambda _: ctx.bot.loop.call_soon_threadsafe(event.set))
-                        await ctx.send(f"Now playing: {source['title']}")
-                    except:
-                        async with lock:
-                            await q.put((song))
-                            
-                    await event.wait()
-                    audio_source.cleanup()
+                # handles loop command logic
+                song = server_info['current_song'] if server_info['loop'] else await q.get()
+                server_info['current_song'] = song
+                
+                # extracts audio stream and creates AudioSource object with adjustable volume
+                if song.get('ie_key') == 'Soundcloud':
+                    source = self.ydl.extract_info(song['url'], download=False)
                 else:
-                    q._init(0)
+                    source = self.ydl.extract_info(f"https://www.youtube.com/watch?v={song['id']}", download=False)
+
+                updated_options = dict(ffmpeg_options)
+                audio_source = discord.FFmpegPCMAudio(source['url'], **updated_options)
+                audio_source = discord.PCMVolumeTransformer(audio_source)
+                audio_source.volume = VOLUME_CONTROL
+                
+                # handles errors where two songs are played simultaneously
+                try:
+                    ctx.guild.voice_client.play(audio_source, after = lambda _: event.set())
+                    await ctx.send(f"Now playing: {source['title']}")
+                except:
+                    async with lock:
+                        await q.put((song))
+                        
+                await event.wait()
+                audio_source.cleanup()
             else:
-                await ctx.send("Queue is empty, so I'm leaving. See you next time!")
+                q._init(0)
+        else:
+            await ctx.send("Queue is empty, so I'm leaving. See you next time!")
+            if ctx.voice_client is not None:
                 await self.disconnect(ctx.guild)
 
     @commands.command()
@@ -374,7 +376,9 @@ class Music(commands.Cog):
         Args:
             ctx (discord.ext.commands.Context): context related to command call
         """
-        if ctx.voice_client and ctx.voice_client.is_playing():
+        if ctx.voice_client is None:
+            await ctx.send("Bot is not connected.")
+        elif ctx.voice_client.is_playing():
             ctx.voice_client.pause()
             await ctx.send("Music is paused!")
         else:
@@ -388,7 +392,9 @@ class Music(commands.Cog):
         Args:
             ctx (discord.ext.commands.Context): context related to command call
         """
-        if ctx.voice_client and ctx.voice_client.is_playing():
+        if ctx.voice_client is None:
+            await ctx.send("Bot is not connected.")
+        elif ctx.voice_client.is_playing():
             ctx.voice_client.stop()
             await ctx.send("Song skipped!")
         else:
