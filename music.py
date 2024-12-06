@@ -193,15 +193,19 @@ class Music(commands.Cog):
                 query = ' '.join(params)
                 # assumes only soundcloud and youtube are available
                 # TODO link verification?
-                info = self.ydl.extract_info(f"{'' if ('list=' in query or 'soundcloud.com' in query or 'youtube.com' in query) else 'ytsearch:'}{query}", download=False)
+                is_link = 'list=' in query or 'soundcloud.com' in query or 'youtube.com' in query
+                info = self.ydl.extract_info(f"{'' if is_link else 'ytsearch:'}{query}", download=False)
                 await ctx.send(f"Added song to queue!")
             except:
                 ctx.send('Error in finding song')
                 return
             # lock ensures that only one person is affecting the queue at a time
             async with lock:
-                for entry in info['entries']:
-                    await q.put(entry)
+                if is_link:
+                    await q.put({"id": info["id"], "title": info["title"]})
+                else:
+                    for entry in info['entries']:
+                        await q.put(entry)
     
     async def disconnect(self, guild):
         """
