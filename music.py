@@ -202,7 +202,7 @@ class Music(commands.Cog):
             # lock ensures that only one person is affecting the queue at a time
             async with lock:
                 if is_link:
-                    await q.put({"id": info["id"], "title": info["title"]})
+                    await q.put(info)
                 else:
                     for entry in info['entries']:
                         await q.put(entry)
