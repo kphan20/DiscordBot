@@ -32,7 +32,10 @@ VOLUME_CONTROL = 0.1
 QUEUE_PAGE_SIZE = 10
 
 # causes queue message to timeout at this time
-TIMEOUT = 30
+Q_TIMEOUT = 30
+
+# causes bot to disconnect after queue empties after some time
+EMPTY_TIMEOUT = 5
 
 class SongQueue(asyncio.Queue):
     """
@@ -146,7 +149,8 @@ class Music(commands.Cog):
                 'event': asyncio.Event(),
                 'lock': asyncio.Lock(),
                 'current_song': '',
-                'loop': False
+                'loop': False,
+                'timeout': False
             }
         info = self.servers.get(ctx.guild.id)
         return info
@@ -192,7 +196,7 @@ class Music(commands.Cog):
             try:
                 query = ' '.join(params)
                 # assumes only soundcloud and youtube are available
-                # TODO link verification?
+                # TODO link verification? handle variety of links
                 is_link = 'list=' in query or 'soundcloud.com' in query or 'youtube.com' in query
                 info = self.ydl.extract_info(f"{'' if is_link else 'ytsearch:'}{query}", download=False)
                 await ctx.send(f"Added song to queue!")
@@ -201,6 +205,7 @@ class Music(commands.Cog):
                 return
             # lock ensures that only one person is affecting the queue at a time
             async with lock:
+                server_info["timeout"] = False
                 if is_link:
                     await q.put(info)
                 else:
@@ -310,11 +315,10 @@ class Music(commands.Cog):
             # if the bot is currently connected, play a song
             # otherwise, clear the queue
             if ctx.voice_client:
-                server_info = self.get_server_info(ctx) # TODO do I need this?
-                
                 # handles loop command logic
-                song = server_info['current_song'] if server_info['loop'] else await q.get()
-                server_info['current_song'] = song
+                async with lock:
+                    song = server_info['current_song'] if server_info['loop'] else await q.get()
+                    server_info['current_song'] = song
                 
                 # extracts audio stream and creates AudioSource object with adjustable volume
                 if song.get('ie_key') == 'Soundcloud':
@@ -340,9 +344,20 @@ class Music(commands.Cog):
             else:
                 q._init(0)
         else:
-            await ctx.send("Queue is empty, so I'm leaving. See you next time!")
-            if ctx.voice_client is not None:
-                await self.disconnect(ctx.guild)
+            async def timeout():
+                await asyncio.sleep(EMPTY_TIMEOUT)
+                async with lock:
+                    if server_info["timeout"]:
+                        await ctx.send("Queue is empty, so I'm leaving. See you next time!")
+                        if ctx.voice_client is not None:
+                            await self.disconnect(ctx.guild)
+
+            async with lock:
+                if server_info["timeout"]:
+                    return
+                server_info["timeout"] = True
+            
+            await timeout()
 
     @commands.command()
     async def shuffle(self, ctx):
@@ -414,12 +429,14 @@ class Music(commands.Cog):
         """
         if ctx.voice_client and ctx.voice_client.is_playing():
             info = self.get_server_info(ctx)
-            loop_setting = not info['loop']
-            info['loop'] = loop_setting
-            await ctx.send(f"Loop {'en' if info['loop'] else 'dis'}abled for song {info['current_song']['title']}")
+            async with info['lock']:
+                loop_setting = not info['loop']
+                info['loop'] = loop_setting
+                title = info['current_song']['title']
+            await ctx.send(f"Loop {'en' if loop_setting else 'dis'}abled for song {title}")
             # adds current song back to queue to start loop
-            if loop_setting and info['q'].empty():
-                async with info['lock']:
+            async with info['lock']:
+                if loop_setting and info['q'].empty():
                     await info['q'].put(info['current_song'])
         else:
             await ctx.send("Nothing is playing")
@@ -436,7 +453,8 @@ class Music(commands.Cog):
         
         # used to decide which songs are displayed on the current page of the embed message
         page_size = QUEUE_PAGE_SIZE
-        num_pages = math.ceil(info['q'].qsize() / page_size)
+        async with info['lock']:
+            num_pages = math.ceil(info['q'].qsize() / page_size)
         if num_pages < 1:
             await ctx.send("Queue is empty! Add some songs first.")
             return
@@ -493,7 +511,7 @@ class Music(commands.Cog):
         # scans for reactions until timeout
         while True:
             try:
-                reaction, user = await self.bot.wait_for("reaction_add", timeout=TIMEOUT, check=check)
+                reaction, user = await self.bot.wait_for("reaction_add", timeout=Q_TIMEOUT, check=check)
                 if str(reaction.emoji) == "\u25c0" and current_page > 1:
                     current_page -= 1
                     update_embed_settings(current_page)
