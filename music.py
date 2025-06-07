@@ -5,6 +5,8 @@ from discord.utils import get
 import yt_dlp
 import random
 import math
+from typing import Dict
+# from collections import deque
 
 ffmpeg_options = {
     'options': '-vn',
@@ -35,7 +37,7 @@ QUEUE_PAGE_SIZE = 10
 Q_TIMEOUT = 30
 
 # causes bot to disconnect after queue empties after some time
-EMPTY_TIMEOUT = 5
+EMPTY_TIMEOUT = 60
 
 class SongQueue(asyncio.Queue):
     """
@@ -64,7 +66,43 @@ class SongQueue(asyncio.Queue):
             self._queue.appendleft(item[0])
         else:
             self._queue.append(item)
-            
+
+# class SongQueue:
+#     def __init__(self):
+#         self.q = deque()
+#         self.condition = asyncio.Condition()
+    
+#     async def put(self, item):
+#         async with self.condition:
+#             self.q.append(item)
+#             self.condition.notify()
+    
+#     async def put_left(self, item):
+#         async with self.condition:
+#             self.q.appendleft(item)
+#             self.condition.notify()
+    
+#     async def get(self):
+#         async with self.condition:
+#             while not self.q:
+#                 self.condition.wait()
+#             return self.q.popleft()
+    
+#     def empty(self):
+#         return not self.q
+    
+#     async def clear(self):
+        
+
+class ServerData:
+    def __init__(self):
+        self.q = SongQueue()
+        self.event = asyncio.Event()
+        self.lock = asyncio.Lock()
+        self.current_song = None
+        self.loop = False
+        self.timeout = False
+       
 class Music(commands.Cog):
     """
     Represents the music command handler and allows for different music to be played between servers
@@ -130,7 +168,7 @@ class Music(commands.Cog):
         """
         self.bot = bot
         self.ydl = yt_dlp.YoutubeDL(ydl_opts)
-        self.servers = {}
+        self.servers: Dict[int, ServerData] = {}
     
     def get_server_info(self, ctx):
         """
@@ -144,14 +182,7 @@ class Music(commands.Cog):
         """
         # uses server id as key
         if not self.servers.get(ctx.guild.id):
-            self.servers[ctx.guild.id] = {
-                'q': SongQueue(),
-                'event': asyncio.Event(),
-                'lock': asyncio.Lock(),
-                'current_song': '',
-                'loop': False,
-                'timeout': False
-            }
+            self.servers[ctx.guild.id] = ServerData()
         info = self.servers.get(ctx.guild.id)
         return info
     
@@ -189,7 +220,8 @@ class Music(commands.Cog):
         
         # gets server's async components
         server_info = self.get_server_info(ctx)
-        q, lock = server_info['q'], server_info['lock']
+        q = server_info.q
+        lock = server_info.lock
         
         # retrieves youtube links if params are given
         if params:
@@ -205,7 +237,7 @@ class Music(commands.Cog):
                 return
             # lock ensures that only one person is affecting the queue at a time
             async with lock:
-                server_info["timeout"] = False
+                server_info.timeout = False
                 if is_link:
                     await q.put(info)
                 else:
@@ -301,7 +333,9 @@ class Music(commands.Cog):
             
         # gets server's async components
         server_info = self.get_server_info(ctx)
-        q, event, lock = server_info['q'], server_info['event'], server_info['lock']
+        q = server_info.q
+        event = server_info.event
+        lock = server_info.lock
         
         # exits early if client is already playing
         if ctx.voice_client.is_playing(): # TODO does resume make it play right away? What about small gaps between songs?
@@ -313,12 +347,13 @@ class Music(commands.Cog):
             event.clear()
             
             # if the bot is currently connected, play a song
-            # otherwise, clear the queue
+            # otherwise, clear the queue # TODO why?
             if ctx.voice_client:
                 # handles loop command logic
                 async with lock:
-                    song = server_info['current_song'] if server_info['loop'] else await q.get()
-                    server_info['current_song'] = song
+                    was_looped = server_info.loop
+                    song = server_info.current_song if was_looped else await q.get()
+                    server_info.current_song = song
                 
                 # extracts audio stream and creates AudioSource object with adjustable volume
                 if song.get('ie_key') == 'Soundcloud':
@@ -337,7 +372,8 @@ class Music(commands.Cog):
                     await ctx.send(f"Now playing: {source['title']}")
                 except:
                     async with lock:
-                        await q.put((song))
+                        if not was_looped:
+                            await q.put((song))
                         
                 await event.wait()
                 audio_source.cleanup()
@@ -347,15 +383,18 @@ class Music(commands.Cog):
             async def timeout():
                 await asyncio.sleep(EMPTY_TIMEOUT)
                 async with lock:
-                    if server_info["timeout"]:
+                    is_playing = ctx.voice_client.is_playing()
+                    if server_info.timeout and not is_playing:
                         await ctx.send("Queue is empty, so I'm leaving. See you next time!")
                         if ctx.voice_client is not None:
                             await self.disconnect(ctx.guild)
+                    elif server_info.timeout:
+                        server_info.timeout = False
 
             async with lock:
-                if server_info["timeout"]:
+                if server_info.timeout or not q.empty():
                     return
-                server_info["timeout"] = True
+                server_info.timeout = True
             
             await timeout()
 
@@ -368,7 +407,7 @@ class Music(commands.Cog):
             ctx (discord.ext.commands.Context): context related to command call
         """
         info = self.get_server_info(ctx)
-        q, lock = info['q'], info['lock']
+        q, lock = info.q, info.lock
         
         # waits for other queue transaction to be done before shuffling
         async with lock:
@@ -429,15 +468,17 @@ class Music(commands.Cog):
         """
         if ctx.voice_client and ctx.voice_client.is_playing():
             info = self.get_server_info(ctx)
-            async with info['lock']:
-                loop_setting = not info['loop']
-                info['loop'] = loop_setting
-                title = info['current_song']['title']
-            await ctx.send(f"Loop {'en' if loop_setting else 'dis'}abled for song {title}")
-            # adds current song back to queue to start loop
-            async with info['lock']:
-                if loop_setting and info['q'].empty():
-                    await info['q'].put(info['current_song'])
+            async with info.lock:
+                loop_setting = not info.loop
+                info.loop = loop_setting
+                if info.current_song is not None:
+                    title = info.current_song['title']
+                    await ctx.send(f"Loop {'en' if loop_setting else 'dis'}abled for song {title}")
+                    # adds current song back to queue to start loop
+                    if loop_setting and info.q.empty():
+                        await info.q.put(info.current_song)
+                else:
+                    await ctx.send(f"Loop {'en' if loop_setting else 'dis'}abled!")
         else:
             await ctx.send("Nothing is playing")
 
@@ -453,16 +494,19 @@ class Music(commands.Cog):
         
         # used to decide which songs are displayed on the current page of the embed message
         page_size = QUEUE_PAGE_SIZE
-        async with info['lock']:
-            num_pages = math.ceil(info['q'].qsize() / page_size)
+        async with info.lock:
+            num_pages = math.ceil(info.q.qsize() / page_size)
         if num_pages < 1:
             await ctx.send("Queue is empty! Add some songs first.")
             return
         current_page = 1
         
         # enumerates songs in queue
-        async with info['lock']:
-            songs = list(enumerate(info['q']._queue, start = 1))
+        async with info.lock:
+            songs = list(enumerate(info.q._queue)) # TODO debug this
+            curr_song = info.current_song
+            if curr_song is None:
+                curr_song = songs[0]
             
         embed_settings = discord.Embed(title='Current song queue:', color=discord.Color.blue())
         def update_embed_settings(page_num):
@@ -470,6 +514,9 @@ class Music(commands.Cog):
             Changes the embed fields based on the current page
             """
             embed_settings.clear_fields()
+            # include current song in the queue command
+            title = curr_song['title']
+            embed_settings.add_field(name=f"Currently Playing: {title}", inline=False)
             for x in range((page_num - 1) * page_size, min(len(songs), page_num * page_size)):
                 index = songs[x][0]
                 song = songs[x][1]

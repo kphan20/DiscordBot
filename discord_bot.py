@@ -26,7 +26,7 @@ day_url = 'https://www.merriam-webster.com/word-of-the-day'
 randword_url = 'https://randomword.com/'
 
 # determines chance that secret message is sent - higher means lower chance
-SECRET_MESSAGE_PROC = 99
+SECRET_MESSAGE_PROC = 100
 
 @client.event
 async def on_ready():
