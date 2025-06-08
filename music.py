@@ -238,7 +238,8 @@ class Music(commands.Cog):
             # lock ensures that only one person is affecting the queue at a time
             async with lock:
                 server_info.timeout = False
-                if is_link:
+
+                if is_link and not '&list=' in query:
                     await q.put(info)
                 else:
                     for entry in info['entries']:
@@ -503,7 +504,7 @@ class Music(commands.Cog):
             else:
                 await ctx.send(f'Currently Playing: {curr_song["title"]}')
             return
-        current_page = 1
+        current_page = 0
         
         # enumerates songs in queue
         async with info.lock:
@@ -521,7 +522,7 @@ class Music(commands.Cog):
             # include current song in the queue command
             title = curr_song['title']
             embed_settings.add_field(name=title, value='Currently Playing', inline=False)
-            for x in range((page_num - 1) * page_size, min(len(songs), page_num * page_size)):
+            for x in range(page_num * page_size, min(len(songs), (page_num + 1) * page_size)):
                 index = songs[x][0]
                 song = songs[x][1]
                 source_type = song.get('ie_key')
@@ -563,12 +564,12 @@ class Music(commands.Cog):
         while True:
             try:
                 reaction, user = await self.bot.wait_for("reaction_add", timeout=Q_TIMEOUT, check=check)
-                if str(reaction.emoji) == "\u25c0" and current_page > 1:
-                    current_page -= 1
+                if str(reaction.emoji) == "\u25c0":
+                    current_page = (current_page - 1 + num_pages) % num_pages
                     update_embed_settings(current_page)
                     await message.edit(embed=embed_settings)
-                elif str(reaction.emoji) == "\u25b6" and current_page < num_pages:
-                    current_page += 1
+                elif str(reaction.emoji) == "\u25b6":
+                    current_page = (current_page + 1) % num_pages
                     update_embed_settings(current_page)
                     await message.edit(embed=embed_settings)
                 await message.remove_reaction(reaction, user)
