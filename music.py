@@ -31,7 +31,7 @@ ydl_opts = {
 VOLUME_CONTROL = 0.1
 
 # determines size of each page for queue command
-QUEUE_PAGE_SIZE = 10
+QUEUE_PAGE_SIZE = 5
 
 # causes queue message to timeout at this time
 Q_TIMEOUT = 30
@@ -496,14 +496,18 @@ class Music(commands.Cog):
         page_size = QUEUE_PAGE_SIZE
         async with info.lock:
             num_pages = math.ceil(info.q.qsize() / page_size)
+            curr_song = info.current_song
         if num_pages < 1:
-            await ctx.send("Queue is empty! Add some songs first.")
+            if curr_song is None or not ctx.voice_client.is_playing():
+                await ctx.send("Queue is empty! Add some songs first.")
+            else:
+                await ctx.send(f'Currently Playing: {curr_song["title"]}')
             return
         current_page = 1
         
         # enumerates songs in queue
         async with info.lock:
-            songs = list(enumerate(info.q._queue)) # TODO debug this
+            songs = list(enumerate(info.q._queue, start=1))
             curr_song = info.current_song
             if curr_song is None:
                 curr_song = songs[0]
@@ -516,7 +520,7 @@ class Music(commands.Cog):
             embed_settings.clear_fields()
             # include current song in the queue command
             title = curr_song['title']
-            embed_settings.add_field(name=f"Currently Playing: {title}", inline=False)
+            embed_settings.add_field(name=title, value='Currently Playing', inline=False)
             for x in range((page_num - 1) * page_size, min(len(songs), page_num * page_size)):
                 index = songs[x][0]
                 song = songs[x][1]
